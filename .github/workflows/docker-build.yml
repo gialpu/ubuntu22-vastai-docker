@@ -41,7 +41,7 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=registry,ref=ginopasticcino/ubuntu22-vastai:buildcache
-        cache-to: type=registry,ref=ginopasticcino/ubuntu22-vastai:buildcache,mode=max
-        
+        #       cache-to: type=registry,ref=ginopasticcino/ubuntu22-vastai:buildcache,mode=max
+        #       
     - name: Image digest
       run: echo ${{ steps.build.outputs.digest }}
