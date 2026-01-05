@@ -1,11 +1,12 @@
 # Ubuntu 22.04 Docker Image for Vast.ai
-# Based on official Vast.ai base image with CUDA support
+# Using lighter NVIDIA CUDA base image
 
-FROM vastai/base-image:cuda-12.1.1-auto
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
+
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV WORKSPACE=/workspace
-ENV PATH=/venv/main/bin:$PATH
+ENV PYTHON_VERSION=3.10
 
 # Update system and install essential packages
 RUN apt-get update && apt-get install -y \
@@ -19,28 +20,25 @@ RUN apt-get update && apt-get install -y \
     screen \
     build-essential \
     cmake \
-    ninja-build \
     pkg-config \
-    libssl-dev \
-    libffi-dev \
-    python3-dev \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-venv \
     python3-pip \
-    software-properties-common \
-    ca-certificates \
-    gnupg \
-    lsb-release \
+    openssh-server \
+    supervisor \
+    nginx \
     zip \
     unzip \
     tree \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Activate virtual environment and upgrade pip
-RUN . /venv/main/bin/activate && \
-    pip install --no-cache-dir --upgrade pip setuptools wheel
+# Create Python virtual environment
+RUN python${PYTHON_VERSION} -m venv /venv/main
 
-# Install common Python packages for AI/ML
+# Activate virtual environment and install Python packages
 RUN . /venv/main/bin/activate && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir \
     torch \
     torchvision \
@@ -50,65 +48,62 @@ RUN . /venv/main/bin/activate && \
     scipy \
     scikit-learn \
     matplotlib \
-    seaborn \
-    plotly \
-    opencv-python \
     pillow \
+    opencv-python-headless \
     transformers \
     accelerate \
     diffusers \
-    xformers \
-    bitsandbytes \
     safetensors \
     huggingface-hub \
-    datasets \
-    tokenizers \
     jupyter \
     jupyterlab \
     ipython \
-    notebook \
     gradio \
-    streamlit \
     fastapi \
     uvicorn \
-    pydantic \
     requests \
-    aiohttp \
-    tensorboard \
-    wandb \
-    mlflow \
     tqdm \
-    pyyaml \
-    python-dotenv
+    pyyaml
 
-# Create workspace directory with proper permissions
+# Setup SSH
+RUN mkdir /var/run/sshd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Create workspace directory
 RUN mkdir -p /workspace && chmod 777 /workspace
 
-# Set working directory
-WORKDIR /workspace
+# Setup Jupyter
+RUN . /venv/main/bin/activate && \
+    jupyter notebook --generate-config && \
+    echo "c.NotebookApp.ip = '0.0.0.0'" >> ~/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.allow_root = True" >> ~/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.open_browser = False" >> ~/.jupyter/jupyter_notebook_config.py
 
-# Create a welcome script
+# Create startup script
 RUN echo '#!/bin/bash\n\
-echo "======================================"\n\
+echo "========================================"\n\
 echo "Ubuntu 22.04 + CUDA 12.1.1 + PyTorch"\n\
-echo "======================================"\n\
+echo "========================================"\n\
 echo ""\n\
 echo "Python: $(python --version)"\n\
-echo "CUDA: $(nvcc --version | grep release)"\n\
-echo "PyTorch: $(python -c "import torch; print(torch.__version__)")"\n\
-echo "CUDA Available: $(python -c "import torch; print(torch.cuda.is_available())")"\n\
+if command -v nvcc &> /dev/null; then\n\
+    echo "CUDA: $(nvcc --version | grep release)"\n\
+fi\n\
+if python -c "import torch" 2>/dev/null; then\n\
+    echo "PyTorch: $(python -c "import torch; print(torch.__version__)")"\n\
+    echo "CUDA Available: $(python -c "import torch; print(torch.cuda.is_available())")"\n\
+fi\n\
 if command -v nvidia-smi &> /dev/null; then\n\
     echo ""\n\
     nvidia-smi\n\
 fi\n\
 echo ""\n\
-echo "Virtual env: /venv/main (already activated)"\n\
+echo "Virtual env: /venv/main"\n\
 echo "Workspace: /workspace"\n\
 echo ""\n\
-echo "Services:"\n\
-echo "- Jupyter: Port 8888"\n\
-echo "- SSH: Port 22"\n\
-echo "- Instance Portal: Port 3022"\n\
+echo "To start Jupyter: jupyter lab --ip=0.0.0.0 --port=8888 --allow-root"\n\
+echo "To start SSH: service ssh start"\n\
 echo ""' > /usr/local/bin/welcome.sh && \
     chmod +x /usr/local/bin/welcome.sh
 
@@ -116,8 +111,11 @@ echo ""' > /usr/local/bin/welcome.sh && \
 RUN echo '. /venv/main/bin/activate' >> /root/.bashrc && \
     echo '/usr/local/bin/welcome.sh' >> /root/.bashrc
 
-# Expose common ports
-EXPOSE 8888 6006 7860 8080 22 3022
+# Set working directory
+WORKDIR /workspace
 
-# The entrypoint is inherited from vastai/base-image
-# It handles SSH, Jupyter, and Instance Portal automatically
+# Expose ports
+EXPOSE 8888 22 6006 7860
+
+# Default command
+CMD ["/bin/bash"]
