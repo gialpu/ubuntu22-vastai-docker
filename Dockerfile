@@ -1,8 +1,7 @@
 # Ubuntu 22.04 Docker Image for Vast.ai
 # Based on official Vast.ai base image with CUDA support
 
-FROM vastai/base-image:cuda-12.1.1-cudnn8-devel-ubuntu22.04-python3.10
-
+FROM vastai/base-image:cuda-12.1.1-auto
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV WORKSPACE=/workspace
